@@ -7,12 +7,12 @@ import time
 import ollama
 from dotenv import load_dotenv
 
+KIJIJI_POST_URL = "https://www.kijiji.ca/b-computer-components/city-of-toronto/c788l1700273"
+
 load_dotenv()
 
 from ebay import (
     search_ebay_items,
-    exchange_ebay_code_for_token,
-    get_ebay_token
 )
 
 # TODOs
@@ -82,14 +82,6 @@ def scrape_kijiji_ad(url: str) -> dict:
             except (json.JSONDecodeError, TypeError):
                 pass
 
-        # Fallback to old DOM-based approach if JSON-LD fails
-        if location == 'N/A':
-            loc_elem = (
-                soup.find('span', class_='location-1732119168') or
-                soup.find('span', class_='address-3617944557')
-            )
-            location = loc_elem.text.strip() if loc_elem else 'N/A'
-
         # Return as dict
         data = {
             'title': title,
@@ -143,19 +135,17 @@ if __name__ == '__main__':
     with open("test.txt", "w", encoding="utf-8") as file:
         file.write(json.dumps(search_ebay_items(""), indent=4) + "\n\n")
    
-    # while True:
-    #     print("Checking for new listings...")
-    #     new_ads = check_new_posts(
-    #         "https://www.kijiji.ca/b-computer-components/city-of-toronto/c788l1700273"
-    #     )
-    #     for ad in new_ads[1:]:
-    #         listing = scrape_kijiji_ad(ad)
-    #         print("New listing found:", listing)
-    #         evaluation = evaluate_deal(listing)
+    while True:
+        print("Checking for new listings...")
+        new_ads_urls = check_new_posts(KIJIJI_POST_URL)
+        for ad_url in new_ads_urls:
+            listing = scrape_kijiji_ad(ad_url)
+            print("New listing found:", listing)
+            evaluation = evaluate_deal(listing)
             
-    #         with open("output.txt", "a", encoding="utf-8") as file:
-    #             file.write(json.dumps(listing, indent=4) + "\n\n")
-    #             file.write(evaluation)
-    #             file.write("\n\n")
+            with open("output.txt", "a", encoding="utf-8") as file:
+                file.write(json.dumps(listing, indent=4) + "\n\n")
+                file.write(evaluation)
+                file.write("\n\n")
 
-    #     time.sleep(300)  # every 5 minutes
+        time.sleep(300)  # every 5 minutes
