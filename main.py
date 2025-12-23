@@ -1,14 +1,18 @@
+import os
 import requests
 from bs4 import BeautifulSoup
 import json
 import sys
 import time
 import ollama
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from ebay import (
     search_ebay_items,
-    generate_ebay_auth_url,
-    exchange_ebay_code_for_token
+    exchange_ebay_code_for_token,
+    get_ebay_token
 )
 
 # TODOs
@@ -136,9 +140,8 @@ def evaluate_deal(ad_data: dict) -> str:
     return response.response
 
 if __name__ == '__main__':
-    print(exchange_ebay_code_for_token("","","",""))
-    # with open("test.txt", "w", encoding="utf-8") as file:
-    #     file.write(json.dumps(search_ebay_items(), indent=4) + "\n\n")
+    with open("test.txt", "w", encoding="utf-8") as file:
+        file.write(json.dumps(search_ebay_items(""), indent=4) + "\n\n")
    
     # while True:
     #     print("Checking for new listings...")

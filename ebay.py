@@ -1,7 +1,41 @@
+import os
 import requests
 import base64
+import time
+from dotenv import set_key, find_dotenv, load_dotenv
 
-def exchange_ebay_code_for_token(client_id, client_secret, scope):
+SEARCH_LIMIT = 10
+COMPUTER_COMPONENTS_CATEGORY_ID = 175673
+FILTER_CONDITIONS = "conditions:{USED}"
+
+
+def get_ebay_token() -> str:
+    """
+    Gets a valid eBay OAuth access token, refreshing it if necessary.
+
+    Returns:
+        str: eBay OAuth access token.
+    """
+    current_time = time.time()
+    if current_time > float(os.getenv("EBAY_TOKEN_EXPIRY", 0)):
+        print("Refreshing eBay token...")
+
+        client_id = os.getenv("EBAY_CLIENT_ID")
+        client_secret = os.getenv("EBAY_CLIENT_SECRET")
+        api_scope = os.getenv("EBAY_API_SCOPE")
+        response = exchange_ebay_code_for_token(client_id, client_secret, api_scope)
+
+        dotenv_path = find_dotenv()
+        set_key(dotenv_path, "EBAY_TOKEN", response['access_token'])
+        set_key(dotenv_path, "EBAY_TOKEN_EXPIRY", str(current_time + response['expires_in']))
+        load_dotenv()
+        return response['access_token']
+    else:
+        print("eBay token is still valid, using existing token.")
+        return os.getenv("EBAY_TOKEN")
+
+
+def exchange_ebay_code_for_token(client_id, client_secret, scope) -> dict:
     """
     Exchange the authorization code for an access token.
 
@@ -33,7 +67,7 @@ def exchange_ebay_code_for_token(client_id, client_secret, scope):
     response.raise_for_status()
     return response.json()
 
-def search_ebay_items(params, token=None):
+def search_ebay_items(query_string:str, token=None) -> dict:
     """
     Make a GET request to eBay's item summary search API.
 
@@ -48,12 +82,21 @@ def search_ebay_items(params, token=None):
     Returns:
         dict: JSON response from the API if successful, else raises an exception.
     """
+    if not token: 
+        token = get_ebay_token()
+
     url = "https://api.ebay.com/buy/browse/v1/item_summary/search"
-    params = {'q': 'rtx 3080', 'limit': '3', 'category_ids': '175673', "filter": "conditions:{USED}"}
-    headers = {}
-    if token:
-        headers['Authorization'] = f'Bearer {token}'
+    params = {
+        'q': query_string,
+        'limit': SEARCH_LIMIT,
+        'category_ids': COMPUTER_COMPONENTS_CATEGORY_ID,
+        "filter": FILTER_CONDITIONS
+    }
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "X-EBAY-C-MARKETPLACE-ID": "EBAY_CA"
+    }
 
     response = requests.get(url, params=params, headers=headers)
-    response.raise_for_status()  # Raise an exception for bad status codes
+    response.raise_for_status()
     return response.json()
