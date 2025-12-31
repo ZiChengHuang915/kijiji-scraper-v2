@@ -1,12 +1,13 @@
+import numpy as np
 import os
 import requests
 import base64
 import time
 from dotenv import set_key, find_dotenv, load_dotenv
 
-SEARCH_LIMIT = 10
+SEARCH_LIMIT = 20
 COMPUTER_COMPONENTS_CATEGORY_ID = 175673
-FILTER_CONDITIONS = "conditions:{USED}"
+FILTER_CONDITIONS = "conditions:{NEW|USED}"
 
 
 def get_ebay_token() -> str:
@@ -88,6 +89,7 @@ def search_ebay_items(query_string:str, token=None) -> dict:
     url = "https://api.ebay.com/buy/browse/v1/item_summary/search"
     params = {
         'q': query_string,
+        'auto_correct' : "KEYWORD",
         'limit': SEARCH_LIMIT,
         'category_ids': COMPUTER_COMPONENTS_CATEGORY_ID,
         "filter": FILTER_CONDITIONS
@@ -100,3 +102,40 @@ def search_ebay_items(query_string:str, token=None) -> dict:
     response = requests.get(url, params=params, headers=headers)
     response.raise_for_status()
     return response.json()
+
+def get_average_ebay_price(condensed_listings: list[dict]) -> float:
+    if not condensed_listings:
+        return 0.0
+
+    total_price = sum(item['price'] for item in condensed_listings)
+    average_price = total_price / len(condensed_listings)
+    return average_price
+
+def get_average_ebay_price_with_trimming(condensed_listings: list[dict]) -> float:
+    if not condensed_listings:
+        return 0.0
+
+    prices = [item['price'] for item in condensed_listings]
+    q3 = np.quantile(prices, 0.75)
+    q1 = np.quantile(prices, 0.15) # make it looser
+
+    # Keep values strictly less than the 75th percentile
+    filtered_prices = [x for x in prices if x < q3 and x > q1]
+    return sum(filtered_prices) / len(filtered_prices) if filtered_prices else 0.0
+
+def get_condensed_ebay_listings(item_title: str) -> list[dict]:
+    search_results = search_ebay_items(item_title)
+    condensed_listings = []
+
+    for item in search_results.get('itemSummaries', []):
+        price = float(item.get('price', {}).get('value', 'N/A')) + float(item.get('shippingOptions', [{}])[0].get('shippingCost', {}).get('value', 0))
+
+        listing = {
+            'title': item.get('title', 'N/A'),
+            'price': price,
+            'condition': item.get('condition', 'N/A'),
+            'url': item.get('itemWebUrl', 'N/A')
+        }
+        condensed_listings.append(listing)
+
+    return condensed_listings
