@@ -90,17 +90,17 @@ def filter_component_listing(listing: dict) -> bool:
     response = client.generate(model=model, prompt=prompt)
     return response.response == "True"
 
-def evaluate_deal(ad_data: dict, use_ai: bool = False) -> str:
+def evaluate_deal(listing: dict, use_ai: bool = False) -> str:
     if use_ai:
         prompt = f"""
         You are an expert in evaluating online classified ads for computer components. Based on the following ad details, determine how good of a deal the price represents compared to the market value for similar items.
 
         Ad Details:
-        Title: {ad_data['title']}
-        Price: {ad_data['price']}
-        Description: {ad_data['description']}
-        Location: {ad_data['location']}
-        URL: {ad_data['url']}
+        Title: {listing['title']}
+        Price: {listing['price']}
+        Description: {listing['description']}
+        Location: {listing['location']}
+        URL: {listing['url']}
 
         Provide the deal evaluation score on a scale of 1 to 100, where 100 means an excellent deal and 1 means a terrible deal. Use the following guideline to evaluate the score:
         
@@ -126,29 +126,31 @@ def evaluate_deal(ad_data: dict, use_ai: bool = False) -> str:
         response = client.generate(model=model, prompt=prompt)
         return response.response
     else:
-        should_keep = filter_component_listing(ad_data)
+        should_keep = filter_component_listing(listing)
         if not should_keep:
             return json.dumps({
+                "listing": listing,
                 "should_keep": should_keep,
                 "deal_score": 100.0,
-                "ebay search title": ad_data['title'],
+                "ebay search title": "N/A",
                 "average_ebay_price": 0.0,
                 "ebay_listings": {"item": []},
-            })
+            }, indent=4)
         
-        title = cleanup_title_string(ad_data['title'])
-        ad_price = float(ad_data['price'].replace('$', '').replace(',', '').strip())
+        title = cleanup_title_string(listing['title'])
+        ad_price = float(listing['price'].replace('$', '').replace(',', '').strip())
         condensed_listings = get_condensed_ebay_listings(title)
         average_ebay_price = get_average_ebay_price_with_trimming(condensed_listings)
         
         deal_score = ad_price / average_ebay_price * 100 if average_ebay_price > 0 else 100.0
         return json.dumps({
+            "listing": listing,
             "should_keep": should_keep,
             "deal_score": deal_score,
             "ebay search title": title,
             "average_ebay_price": average_ebay_price,
             "ebay_listings": {"item": condensed_listings},
-        })
+        }, indent=4)
 
 if __name__ == '__main__':
     if False:
@@ -183,7 +185,6 @@ if __name__ == '__main__':
                 evaluation = evaluate_deal(listing, use_ai=False)
                 
                 with open("output.txt", "a", encoding="utf-8") as file:
-                    file.write(json.dumps(listing, indent=4) + "\n\n")
                     file.write(evaluation)
                     file.write("\n\n")
 
