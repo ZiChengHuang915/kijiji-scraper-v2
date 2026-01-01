@@ -90,67 +90,32 @@ def filter_component_listing(listing: dict) -> bool:
     response = client.generate(model=model, prompt=prompt)
     return response.response == "True"
 
-def evaluate_deal(listing: dict, use_ai: bool = False) -> str:
-    if use_ai:
-        prompt = f"""
-        You are an expert in evaluating online classified ads for computer components. Based on the following ad details, determine how good of a deal the price represents compared to the market value for similar items.
-
-        Ad Details:
-        Title: {listing['title']}
-        Price: {listing['price']}
-        Description: {listing['description']}
-        Location: {listing['location']}
-        URL: {listing['url']}
-
-        Provide the deal evaluation score on a scale of 1 to 100, where 100 means an excellent deal and 1 means a terrible deal. Use the following guideline to evaluate the score:
-        
-        - At market value: 100
-        - 10% below market value: 10
-        - 20% below market value: 20
-        - 30% below market value: 30
-        - 40% below market value: 40
-        - 50% below market value: 50    
-        
-        Only consider the price in your evaluation and compare it to what the market price is for the item based on the title and description. Do not assume that any listing is a scam or has any hidden issues. If you determine that the listing is for a bundle (multiple items), evaluate the score as 50 and output that it is a bundle. If the score falls between the defined thresholds, estimate accordingly.
-        
-        Please return your response strictly in the following JSON format:
-        {{
-            "deal_score": <1-100>,
-            "reasoning": <string explaining the score>
-            "is_bundle": <true/false>
-        }}
-        """
-        client = ollama.Client()
-        model = "deepseek-r1:8b"
-
-        response = client.generate(model=model, prompt=prompt)
-        return response.response
-    else:
-        should_keep = filter_component_listing(listing)
-        if not should_keep:
-            return json.dumps({
-                "listing": listing,
-                "should_keep": should_keep,
-                "deal_score": 100.0,
-                "ebay search title": "N/A",
-                "average_ebay_price": 0.0,
-                "ebay_listings": {"item": []},
-            }, indent=4)
-        
-        title = cleanup_title_string(listing['title'])
-        ad_price = float(listing['price'].replace('$', '').replace(',', '').strip())
-        condensed_listings = get_condensed_ebay_listings(title)
-        average_ebay_price = get_average_ebay_price_with_trimming(condensed_listings)
-        
-        deal_score = ad_price / average_ebay_price * 100 if average_ebay_price > 0 else 100.0
+def evaluate_deal(listing: dict) -> str:
+    should_keep = filter_component_listing(listing)
+    if not should_keep:
         return json.dumps({
             "listing": listing,
             "should_keep": should_keep,
-            "deal_score": deal_score,
-            "ebay search title": title,
-            "average_ebay_price": average_ebay_price,
-            "ebay_listings": {"item": condensed_listings},
+            "deal_score": 100.0,
+            "ebay search title": "N/A",
+            "average_ebay_price": 0.0,
+            "ebay_listings": {"item": []},
         }, indent=4)
+    
+    title = cleanup_title_string(listing['title'])
+    ad_price = listing['price']
+    condensed_listings = get_condensed_ebay_listings(title)
+    average_ebay_price = get_average_ebay_price_with_trimming(condensed_listings)
+    
+    deal_score = ad_price / average_ebay_price * 100 if average_ebay_price > 0 else 100.0
+    return json.dumps({
+        "listing": listing,
+        "should_keep": should_keep,
+        "deal_score": deal_score,
+        "ebay search title": title,
+        "average_ebay_price": average_ebay_price,
+        "ebay_listings": {"item": condensed_listings},
+    }, indent=4)
 
 if __name__ == '__main__':
     if False:
@@ -182,7 +147,7 @@ if __name__ == '__main__':
             new_ads_urls = check_new_posts(KIJIJI_POST_URL)
             for ad_url in new_ads_urls:
                 listing = scrape_kijiji_ad(ad_url)
-                evaluation = evaluate_deal(listing, use_ai=False)
+                evaluation = evaluate_deal(listing)
                 
                 with open("output.txt", "a", encoding="utf-8") as file:
                     file.write(evaluation)

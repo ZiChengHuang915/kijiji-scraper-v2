@@ -45,6 +45,7 @@ def scrape_kijiji_ad(url: str) -> dict:
         # Extract price
         price_elem = soup.find('p', {'data-testid': 'vip-price'})
         price = price_elem.text.strip() if price_elem else 'N/A'
+        price = float(price.replace("$", "")) if price != 'N/A' else price
 
         # Extract description
         desc_elem = soup.find('div', {'data-testid': 'vip-description-wrapper'})
