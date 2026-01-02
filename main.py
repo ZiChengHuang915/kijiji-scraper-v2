@@ -40,10 +40,10 @@ import database
 # dump all ids to a database, maybe excel
 # handle bundle deals, maybe query ebay multiple times or use the most expensive item (or first item)
 
-def cleanup_title_string(title: str) -> str:
+def cleanup_title_string(title: str, description: str) -> str:
     client = ollama.Client()
     prompt = f"""
-    You are a helpful assistant that extracts the main product name from a given title string for computer components. Remove any unnecessary details such as specifications, conditions, or seller notes, and return a concise product name. Make sure to autocorrect any spelling mistakes.
+    You are a helpful assistant that extracts the main product name from a given title and description string for computer components. Remove any unnecessary details such as specifications, conditions, or seller notes, and return a concise product name. Make sure to autocorrect any spelling mistakes.
     
     Keep any technical details that are part of the product name itself, such as the amount of storage (e.g., "1 TB") or memory size (e.g., "16 GB").
 
@@ -53,6 +53,12 @@ def cleanup_title_string(title: str) -> str:
 
     For liquid coolers, only include the radiator size (e.g., 240mm, 360mm). Do not include the brand name or model number.
 
+    For motherboards, include the brand name and specific model.
+
+    For cases, include the brand name and specific model.
+
+    For graphics cards (GPUs), include the brand and model name. Do not include memory size or other specifications.
+
     Examples:
     - Input: "RTX 4500 AD102 24GB GDDR6"
       Output: "RTX 4500"
@@ -60,8 +66,10 @@ def cleanup_title_string(title: str) -> str:
       Output: "6TB Portable SSD"
     - Input: "ASUS ROG RYUJIN III 360 ARGB EXTREME - AIO (WHITE)"
       Output: "360mm AIO Liquid Cooler"
+    - Input: "ASUS TUF Gaming X570-PLUS (Wifi) Motherboard - LIKE NEW"
+      Output: "ASUS TUF Gaming X570-PLUS Motherboard"
 
-    The title string is "{title}". Return only the cleaned product name without any additional text."""
+    The title string is "{title}" and the description string is "{description}". Return only the cleaned product name without any additional text."""
     model = "deepseek-r1:8b"
 
     response = client.generate(model=model, prompt=prompt)
@@ -87,6 +95,8 @@ def filter_component_listing(listing: dict) -> bool:
     - Storage drives (HDDs, SSDs)
     - Power supply units (PSUs)
     - Cases
+
+    If the listing title does not provide enough information to make a determination, analyze the description as well for model numbers, specifications, and other relevant details.
     
     Return only the string "True" if it passes the filter, or "False" if it does not.
     """
@@ -112,9 +122,9 @@ def evaluate_deal(listing: dict) -> dict:
 
     if not should_keep:
         return deal
-    
-    title = cleanup_title_string(listing['title'])
-    
+
+    title = cleanup_title_string(listing['title'], listing['description'])
+
     condensed_listings = get_condensed_ebay_listings(title)
     average_ebay_price = get_average_ebay_price_with_trimming(condensed_listings)
     
@@ -180,7 +190,9 @@ if __name__ == '__main__':
     conn = database.create_connection("deals.db")
     database.create_table(conn)
 
-    with open("output.txt", "w", encoding="utf-8") as file:
+    with open("pass.txt", "w", encoding="utf-8") as file:
+        file.write("----- New Run -----\n\n")
+    with open("fail.txt", "w", encoding="utf-8") as file:
         file.write("----- New Run -----\n\n")
 
     while True:
@@ -197,10 +209,15 @@ if __name__ == '__main__':
                     print("sending email for listing:", listing['title'])
                     send_evaluation_email(evaluation, "zichuang127@gmail.com")
 
-                with open("output.txt", "a", encoding="utf-8") as file:
-                    file.write(json.dumps(evaluation, indent=4))
-                    file.write("\n\n")
+                    with open("pass.txt", "a", encoding="utf-8") as file:
+                        file.write(json.dumps(evaluation, indent=4))
+                        file.write("\n\n")
+                else:
+                    with open("fail.txt", "a", encoding="utf-8") as file:
+                        file.write(json.dumps(evaluation, indent=4))
+                        file.write("\n\n")
             else:
                 print("evaluation already exists for listing:", listing['title'])
 
+        print("Sleeping for 5 minutes...")
         time.sleep(300)  # every 5 minutes

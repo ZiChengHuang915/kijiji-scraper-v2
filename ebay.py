@@ -5,7 +5,7 @@ import base64
 import time
 from dotenv import set_key, find_dotenv, load_dotenv
 
-SEARCH_LIMIT = 20
+SEARCH_LIMIT = 15
 COMPUTER_COMPONENTS_CATEGORY_ID = 175673
 FILTER_CONDITIONS = "conditions:{NEW|USED}"
 
