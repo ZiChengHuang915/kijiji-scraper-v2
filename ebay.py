@@ -27,6 +27,8 @@ def get_ebay_token() -> str:
         response = exchange_ebay_code_for_token(client_id, client_secret, api_scope)
 
         dotenv_path = find_dotenv()
+        os.environ["EBAY_TOKEN"] = response['access_token']
+        os.environ["EBAY_TOKEN_EXPIRY"] = str(current_time + response['expires_in'])
         set_key(dotenv_path, "EBAY_TOKEN", response['access_token'])
         set_key(dotenv_path, "EBAY_TOKEN_EXPIRY", str(current_time + response['expires_in']))
         load_dotenv()
