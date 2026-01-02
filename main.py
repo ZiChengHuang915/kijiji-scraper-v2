@@ -193,8 +193,9 @@ if __name__ == '__main__':
                 print("inserting new evaluation for listing:", listing['title'])
                 database.insert_evaluation(conn, evaluation)
 
-                print("sending email for listing:", listing['title'])
-                send_evaluation_email(evaluation, "zichuang127@gmail.com")
+                if evaluation['percentile_score'] < 70.0:
+                    print("sending email for listing:", listing['title'])
+                    send_evaluation_email(evaluation, "zichuang127@gmail.com")
 
                 with open("output.txt", "a", encoding="utf-8") as file:
                     file.write(json.dumps(evaluation, indent=4))
