@@ -6,6 +6,9 @@ import sys
 import time
 import ollama
 from dotenv import load_dotenv
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 KIJIJI_POST_URL = "https://www.kijiji.ca/b-computer-components/city-of-toronto/c788l1700273"
 
@@ -123,30 +126,80 @@ def evaluate_deal(listing: dict) -> dict:
     deal["ebay_listings"] = {"item": condensed_listings}
     return deal
 
+def send_evaluation_email(evaluation: dict, recipient_email: str):
+    """Send an email containing the evaluation JSON to the specified recipient"""
+    smtp_server = os.getenv('SMTP_SERVER', 'smtp.gmail.com')
+    smtp_port = int(os.getenv('SMTP_PORT', 587))
+    sender_email = os.getenv('SENDER_EMAIL')
+    sender_password = os.getenv('SENDER_PASSWORD')
+    
+    if not all([sender_email, sender_password]):
+        print("Email configuration not found in environment variables")
+        return False
+    
+    # Create message
+    msg = MIMEMultipart()
+    msg['From'] = sender_email
+    msg['To'] = recipient_email
+    msg['Subject'] = f"Kijiji Scraper v2: {evaluation['listing']['title']}"
+
+    
+    # Format the JSON nicely
+    json_body = json.dumps(evaluation, indent=2)
+    
+    # Create email body
+    body = f"""
+Deal: {evaluation['listing']['title']}
+Price: ${evaluation['listing']['price']}
+Link: {evaluation['listing']['url']}
+
+Full Evaluation JSON:
+{json_body}
+"""
+    
+    msg.attach(MIMEText(body, 'plain'))
+    
+    try:
+        # Create SMTP session
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        server.starttls()
+        server.login(sender_email, sender_password)
+        
+        # Send email
+        text = msg.as_string()
+        server.sendmail(sender_email, recipient_email, text)
+        server.quit()
+        
+        print(f"Email sent successfully to {recipient_email}")
+        return True
+    except Exception as e:
+        print(f"Failed to send email: {e}")
+        return False
+
 if __name__ == '__main__':
     conn = database.create_connection("deals.db")
     database.create_table(conn)
-    
-    if True:
-        print(database.delete_all_evaluations(conn))
-    else:
-        with open("output.txt", "w", encoding="utf-8") as file:
-            file.write("----- New Run -----\n\n")
-    
-        while True:
-            new_ads_urls = check_new_posts(KIJIJI_POST_URL)
-            for ad_url in new_ads_urls:
-                listing = scrape_kijiji_ad(ad_url)
-                
-                if not database.evaluation_exists(conn, listing):
-                    evaluation = evaluate_deal(listing)
-                    print("inserting new evaluation for listing:", listing['title'])
-                    database.insert_evaluation(conn, evaluation)
 
-                    with open("output.txt", "a", encoding="utf-8") as file:
-                        file.write(json.dumps(evaluation, indent=4))
-                        file.write("\n\n")
-                else:
-                    print("evaluation already exists for listing:", listing['title'])
+    with open("output.txt", "w", encoding="utf-8") as file:
+        file.write("----- New Run -----\n\n")
 
-            time.sleep(300)  # every 5 minutes
+    while True:
+        new_ads_urls = check_new_posts(KIJIJI_POST_URL)
+        for ad_url in new_ads_urls:
+            listing = scrape_kijiji_ad(ad_url)
+            
+            if not database.evaluation_exists(conn, listing):
+                evaluation = evaluate_deal(listing)
+                print("inserting new evaluation for listing:", listing['title'])
+                database.insert_evaluation(conn, evaluation)
+
+                print("sending email for listing:", listing['title'])
+                send_evaluation_email(evaluation, "zichuang127@gmail.com")
+
+                with open("output.txt", "a", encoding="utf-8") as file:
+                    file.write(json.dumps(evaluation, indent=4))
+                    file.write("\n\n")
+            else:
+                print("evaluation already exists for listing:", listing['title'])
+
+        time.sleep(300)  # every 5 minutes
