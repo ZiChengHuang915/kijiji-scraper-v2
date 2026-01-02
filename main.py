@@ -25,6 +25,8 @@ from kijiji import (
     scrape_kijiji_ad, 
 )
 
+import database
+
 # TODOs
 # make bundle detection looser, only check if multiple prices are listed
 # if "price": "Free", score should be 100 
@@ -90,55 +92,43 @@ def filter_component_listing(listing: dict) -> bool:
     response = client.generate(model=model, prompt=prompt)
     return response.response == "True"
 
-def evaluate_deal(listing: dict) -> str:
+def evaluate_deal(listing: dict) -> dict:
     should_keep = filter_component_listing(listing)
+    ad_price = listing['price']
+    if ad_price == -1:
+        should_keep = False
+
+    deal = {
+        "listing": listing,
+        "should_keep": should_keep,
+        "percentile_score": 100.0,
+        "ebay search title": "N/A",
+        "average_ebay_price": 0.0,
+        "ebay_listings": {"item": []},
+    }
+
     if not should_keep:
-        return json.dumps({
-            "listing": listing,
-            "should_keep": should_keep,
-            "deal_score": 100.0,
-            "ebay search title": "N/A",
-            "average_ebay_price": 0.0,
-            "ebay_listings": {"item": []},
-        }, indent=4)
+        return deal
     
     title = cleanup_title_string(listing['title'])
-    ad_price = listing['price']
+    
     condensed_listings = get_condensed_ebay_listings(title)
     average_ebay_price = get_average_ebay_price_with_trimming(condensed_listings)
     
-    deal_score = ad_price / average_ebay_price * 100 if average_ebay_price > 0 else 100.0
-    return json.dumps({
-        "listing": listing,
-        "should_keep": should_keep,
-        "deal_score": deal_score,
-        "ebay search title": title,
-        "average_ebay_price": average_ebay_price,
-        "ebay_listings": {"item": condensed_listings},
-    }, indent=4)
+    percentile_score = ad_price / average_ebay_price * 100 if average_ebay_price > 0 else 100.0
+    
+    deal["percentile_score"] = percentile_score
+    deal["ebay search title"] = title
+    deal["average_ebay_price"] = average_ebay_price
+    deal["ebay_listings"] = {"item": condensed_listings}
+    return deal
 
 if __name__ == '__main__':
-    if False:
-        # with open("test.txt", "w", encoding="utf-8") as file:
-        #     file.write(json.dumps(get_condensed_ebay_listings("Computer RAM: Kingston ValueRAM 1 GB 400MHz DDR DIMM"), indent=4) + "\n\n")
-
-        with open("output.txt", "w", encoding="utf-8") as file:
-            file.write("----- New Run -----\n\n")
+    conn = database.create_connection("deals.db")
+    database.create_table(conn)
     
-        while True:
-            print("Checking for new listings...")
-            new_ads_urls = check_new_posts(KIJIJI_POST_URL)
-            for ad_url in new_ads_urls:
-                listing = scrape_kijiji_ad(ad_url)
-                print("New listing found:", listing)
-                evaluation = cleanup_title_string(listing['title'])
-                
-                with open("output.txt", "a", encoding="utf-8") as file:
-                    file.write(json.dumps(listing, indent=4) + "\n\n")
-                    file.write(evaluation)
-                    file.write("\n\n")
-
-            time.sleep(300)  # every 5 minutes
+    if True:
+        print(database.delete_all_evaluations(conn))
     else:
         with open("output.txt", "w", encoding="utf-8") as file:
             file.write("----- New Run -----\n\n")
@@ -147,10 +137,16 @@ if __name__ == '__main__':
             new_ads_urls = check_new_posts(KIJIJI_POST_URL)
             for ad_url in new_ads_urls:
                 listing = scrape_kijiji_ad(ad_url)
-                evaluation = evaluate_deal(listing)
                 
-                with open("output.txt", "a", encoding="utf-8") as file:
-                    file.write(evaluation)
-                    file.write("\n\n")
+                if not database.evaluation_exists(conn, listing):
+                    evaluation = evaluate_deal(listing)
+                    print("inserting new evaluation for listing:", listing['title'])
+                    database.insert_evaluation(conn, evaluation)
+
+                    with open("output.txt", "a", encoding="utf-8") as file:
+                        file.write(json.dumps(evaluation, indent=4))
+                        file.write("\n\n")
+                else:
+                    print("evaluation already exists for listing:", listing['title'])
 
             time.sleep(300)  # every 5 minutes
